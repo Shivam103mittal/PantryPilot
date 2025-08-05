@@ -1,7 +1,7 @@
 package com.pantrypilot.controller;
 
 import com.pantrypilot.model.PantryIngredient;
-import com.pantrypilot.repository.PantryIngredientRepository;
+import com.pantrypilot.service.PantryIngredientService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.*;
 
@@ -12,23 +12,23 @@ import java.util.List;
 public class PantryIngredientController {
 
     @Autowired
-    private PantryIngredientRepository pantryIngredientRepository;
+    private PantryIngredientService pantryIngredientService;
 
     // Add a new ingredient
     @PostMapping
     public PantryIngredient addIngredient(@RequestBody PantryIngredient ingredient) {
-        return pantryIngredientRepository.save(ingredient);
+        return pantryIngredientService.saveIngredient(ingredient);
     }
 
     // Get all ingredients
     @GetMapping
     public List<PantryIngredient> getAllIngredients() {
-        return pantryIngredientRepository.findAll();
+        return pantryIngredientService.getAllIngredients();
     }
 
-    @GetMapping("/test")
-    public String test() {
-        return "PantryPilot is working!";
-}
-
+    // Clear all ingredients
+    @DeleteMapping
+    public void clearIngredients() {
+        pantryIngredientService.clearAllIngredients();
+    }
 }
