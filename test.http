@@ -1,0 +1,11 @@
+### Add a new ingredient
+POST http://localhost:8080/api/ingredients
+Content-Type: application/json
+
+{
+  "ingredientName": "Tomato",
+  "quantity": "2 pieces"
+}
+
+### Get all ingredients
+GET http://localhost:8080/api/ingredients
