@@ -32,4 +32,10 @@ public class PantryIngredientServiceImpl implements PantryIngredientService {
     public void clearAllIngredients() {
         pantryIngredientRepository.deleteAll();
     }
+
+    @Override
+    public List<PantryIngredient> saveAllIngredients(List<PantryIngredient> ingredients) {
+    return pantryIngredientRepository.saveAll(ingredients);
+}
+
 }

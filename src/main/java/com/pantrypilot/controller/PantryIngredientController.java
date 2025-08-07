@@ -31,4 +31,11 @@ public class PantryIngredientController {
     public void clearIngredients() {
         pantryIngredientService.clearAllIngredients();
     }
+
+    // Add multiple ingredients at once
+    @PostMapping("/batch")
+    public List<PantryIngredient> addIngredientsBatch(@RequestBody List<PantryIngredient> ingredients) {
+        return pantryIngredientService.saveAllIngredients(ingredients);
+    }
+
 }

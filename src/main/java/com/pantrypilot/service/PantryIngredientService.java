@@ -8,4 +8,5 @@ public interface PantryIngredientService {
     PantryIngredient saveIngredient(PantryIngredient ingredient);
     List<PantryIngredient> getAllIngredients();
     void clearAllIngredients();
+    List<PantryIngredient> saveAllIngredients(List<PantryIngredient> ingredients);
 }
