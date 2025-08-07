@@ -18,5 +18,8 @@ public class PantryIngredient {
     private String ingredientName;
 
     @Column(name = "quantity")
-    private String quantity;
+    private double quantity;  
+
+    @Column(name = "unit")
+    private String unit;      
 }

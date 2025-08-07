@@ -3,6 +3,7 @@ package com.pantrypilot.controller;
 import com.pantrypilot.model.Recipe;
 import com.pantrypilot.service.RecipeService;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -11,8 +12,12 @@ import java.util.List;
 @RequestMapping("/api/recipes")
 public class RecipeController {
 
+    private final RecipeService recipeService;
+
     @Autowired
-    private RecipeService recipeService;
+    public RecipeController(RecipeService recipeService) {
+        this.recipeService = recipeService;
+    }
 
     // Add a new recipe
     @PostMapping
@@ -28,7 +33,7 @@ public class RecipeController {
 
     // Clear all recipes
     @DeleteMapping
-    public void clearRecipes() {
+    public void clearAllRecipes() {
         recipeService.clearAllRecipes();
     }
 }

@@ -1,6 +1,7 @@
 package com.pantrypilot.service.impl;
 
 import com.pantrypilot.model.Recipe;
+import com.pantrypilot.model.RecipeIngredient;
 import com.pantrypilot.repository.RecipeRepository;
 import com.pantrypilot.service.RecipeService;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -11,11 +12,19 @@ import java.util.List;
 @Service
 public class RecipeServiceImpl implements RecipeService {
 
+    private final RecipeRepository recipeRepository;
+
     @Autowired
-    private RecipeRepository recipeRepository;
+    public RecipeServiceImpl(RecipeRepository recipeRepository) {
+        this.recipeRepository = recipeRepository;
+    }
 
     @Override
     public Recipe saveRecipe(Recipe recipe) {
+        // Set the parent reference for each ingredient
+        for (RecipeIngredient ingredient : recipe.getIngredients()) {
+            ingredient.setRecipe(recipe);
+        }
         return recipeRepository.save(recipe);
     }
 

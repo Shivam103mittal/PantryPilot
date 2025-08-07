@@ -2,6 +2,9 @@ package com.pantrypilot.model;
 
 import jakarta.persistence.*;
 import lombok.*;
+import com.fasterxml.jackson.annotation.JsonManagedReference;
+
+import java.util.List;
 
 @Entity
 @Data
@@ -17,4 +20,8 @@ public class Recipe {
 
     @Column(length = 5000)
     private String instructions;
+
+    @OneToMany(mappedBy = "recipe", cascade = CascadeType.ALL, orphanRemoval = true)
+    @JsonManagedReference
+    private List<RecipeIngredient> ingredients;
 }
