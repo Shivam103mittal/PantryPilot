@@ -1,52 +1,35 @@
 package com.pantrypilot.util;
 
-import org.springframework.stereotype.Component;
-
 import java.util.HashMap;
 import java.util.Map;
 
-@Component
 public class UnitConverter {
 
-    private final Map<String, Double> conversionToBase;
+    private static final Map<String, Double> weightUnits = new HashMap<>();
+    private static final Map<String, Double> volumeUnits = new HashMap<>();
 
-    public UnitConverter() {
-        conversionToBase = new HashMap<>();
+    static {
+        weightUnits.put("mg", 0.001);
+        weightUnits.put("g", 1.0);
+        weightUnits.put("kg", 1000.0);
 
-        
-        conversionToBase.put("mg", 0.001);
-        conversionToBase.put("g", 1.0);
-        conversionToBase.put("kg", 1000.0);
-
-        
-        conversionToBase.put("ml", 1.0);
-        conversionToBase.put("l", 1000.0);
-        conversionToBase.put("tbsp", 15.0);  // 1 tbsp = 15 ml
+        volumeUnits.put("ml", 1.0);
+        volumeUnits.put("l", 1000.0);
+        volumeUnits.put("tbsp", 15.0);
     }
 
-    /**
-     * Converts a quantity from one unit to another.
-     * @param quantity the input amount
-     * @param fromUnit unit of the input
-     * @param toUnit unit of the output
-     * @return converted amount in toUnit
-     */
-    public double convert(double quantity, String fromUnit, String toUnit) {
+    public static double convert(double quantity, String fromUnit, String toUnit) {
         if (fromUnit == null || toUnit == null) return quantity;
 
         fromUnit = fromUnit.toLowerCase();
         toUnit = toUnit.toLowerCase();
 
-        Double fromFactor = conversionToBase.get(fromUnit);
-        Double toFactor = conversionToBase.get(toUnit);
-
-        if (fromFactor == null || toFactor == null) {
-
-            return quantity;
+        if (weightUnits.containsKey(fromUnit) && weightUnits.containsKey(toUnit)) {
+            return quantity * weightUnits.get(fromUnit) / weightUnits.get(toUnit);
+        } else if (volumeUnits.containsKey(fromUnit) && volumeUnits.containsKey(toUnit)) {
+            return quantity * volumeUnits.get(fromUnit) / volumeUnits.get(toUnit);
         }
 
-    
-        double quantityInBase = quantity * fromFactor;
-        return quantityInBase / toFactor;
+        return quantity; // If units are unrecognized
     }
 }
