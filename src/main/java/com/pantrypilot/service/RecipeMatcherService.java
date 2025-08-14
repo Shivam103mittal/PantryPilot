@@ -2,73 +2,114 @@ package com.pantrypilot.service;
 
 import com.pantrypilot.model.PantryIngredient;
 import com.pantrypilot.model.Recipe;
+import com.pantrypilot.model.RecipeIngredient;
+import com.pantrypilot.repository.PantryIngredientRepository;
 import com.pantrypilot.repository.RecipeRepository;
 import com.pantrypilot.util.UnitConverter;
-import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
 import java.util.*;
 import java.util.stream.Collectors;
 
 @Service
-@RequiredArgsConstructor
 public class RecipeMatcherService {
 
+    private final PantryIngredientRepository pantryIngredientRepository;
     private final RecipeRepository recipeRepository;
 
-    /**
-     * Match recipes based on the given pantry ingredients.
-     * Returns all matched recipes (no pagination here).
-     */
-    public List<Recipe> matchRecipes(List<PantryIngredient> pantryIngredients) {
-        if (pantryIngredients == null || pantryIngredients.isEmpty()) {
-            System.out.println("Pantry ingredients empty or null");
-            return Collections.emptyList();
-        }
+    public RecipeMatcherService(PantryIngredientRepository pantryIngredientRepository,
+                                RecipeRepository recipeRepository) {
+        this.pantryIngredientRepository = pantryIngredientRepository;
+        this.recipeRepository = recipeRepository;
+    }
 
-        Set<String> ingredientNames = pantryIngredients.stream()
-                .map(pi -> pi.getIngredientName().toLowerCase())
-                .collect(Collectors.toSet());
+    public List<Recipe> matchRecipes(List<PantryIngredient> providedPantry) {
+        List<PantryIngredient> pantryIngredients = (providedPantry != null && !providedPantry.isEmpty())
+                ? providedPantry
+                : pantryIngredientRepository.findAll();
 
-        System.out.println("Pantry ingredient names: " + ingredientNames);
+        // Normalize pantry map
+        Map<String, PantryIngredient> pantryMap = pantryIngredients.stream()
+                .collect(Collectors.toMap(
+                        pi -> normalizeName(pi.getIngredientName()),
+                        pi -> pi,
+                        (pi1, pi2) -> pi1
+                ));
 
-        List<Recipe> candidateRecipes = recipeRepository.findByIngredientNamesAndMaxMissing(
-                ingredientNames,
-                pantryIngredients.size()
+        System.out.println("=== Pantry Map ===");
+        pantryMap.forEach((name, ing) ->
+                System.out.println(name + " -> " + ing.getQuantity() + " " + ing.getUnit())
         );
 
-        System.out.println("Candidate recipes found: " + candidateRecipes.size());
+        List<Recipe> allRecipes = recipeRepository.findAll();
+        List<Recipe> matchedRecipes = new ArrayList<>();
 
-        List<Recipe> matchedRecipes = candidateRecipes.stream()
-                .filter(recipe -> recipeMatchesPantry(recipe, pantryIngredients))
-                .collect(Collectors.toList());
-
-        System.out.println("Matched recipes after filtering: " + matchedRecipes.size());
+        for (Recipe recipe : allRecipes) {
+            if (canMakeRecipe(recipe, pantryMap)) {
+                matchedRecipes.add(recipe);
+            }
+        }
 
         return matchedRecipes;
     }
 
-    private boolean recipeMatchesPantry(Recipe recipe, List<PantryIngredient> pantryIngredients) {
-        for (var recipeIngredient : recipe.getIngredients()) {
-            PantryIngredient matchingPantryIngredient = pantryIngredients.stream()
-                    .filter(pi -> pi.getIngredientName().equalsIgnoreCase(recipeIngredient.getIngredientName()))
-                    .findFirst()
-                    .orElse(null);
+    private boolean canMakeRecipe(Recipe recipe, Map<String, PantryIngredient> pantryMap) {
+        System.out.println("\nChecking recipe: " + recipe.getTitle());
 
-            if (matchingPantryIngredient == null) {
+        for (RecipeIngredient req : recipe.getIngredients()) {
+            String reqName = normalizeName(req.getIngredientName());
+            String reqUnit = normalizeUnit(req.getUnit());
+
+            PantryIngredient pantry = findPantryMatch(reqName, pantryMap);
+            if (pantry == null) {
+                System.out.println("❌ Missing ingredient: " + reqName);
                 return false;
             }
 
-            double pantryQty = UnitConverter.convert(
-                    matchingPantryIngredient.getQuantity(),
-                    matchingPantryIngredient.getUnit(),
-                    recipeIngredient.getUnit()
+            double pantryQty = UnitConverter.convert(pantry.getQuantity(), pantry.getUnit(), reqUnit);
+            System.out.printf(
+                    "Ingredient: %s | Need: %.2f %s | Have: %.2f %s%n",
+                    reqName, req.getQuantity(), reqUnit,
+                    pantryQty, reqUnit
             );
 
-            if (pantryQty < recipeIngredient.getQuantity()) {
+            if (pantryQty < req.getQuantity()) {
+                System.out.println("❌ Not enough: " + reqName);
                 return false;
             }
         }
+
+        System.out.println("✅ Can make: " + recipe.getTitle());
         return true;
+    }
+
+    // Normalize to lowercase, trimmed
+    private String normalizeName(String name) {
+        return name == null ? "" : name.trim().toLowerCase();
+    }
+
+    private String normalizeUnit(String unit) {
+        return unit == null ? "" : unit.trim().toLowerCase();
+    }
+
+    // Slightly tolerant matching (e.g., "tomato" matches "tomatoes")
+    private PantryIngredient findPantryMatch(String reqName, Map<String, PantryIngredient> pantryMap) {
+        if (pantryMap.containsKey(reqName)) {
+            return pantryMap.get(reqName);
+        }
+        // Try plural/singular stripping
+        if (reqName.endsWith("es") && pantryMap.containsKey(reqName.substring(0, reqName.length() - 2))) {
+            return pantryMap.get(reqName.substring(0, reqName.length() - 2));
+        }
+        if (reqName.endsWith("s") && pantryMap.containsKey(reqName.substring(0, reqName.length() - 1))) {
+            return pantryMap.get(reqName.substring(0, reqName.length() - 1));
+        }
+        // Try contains match
+        for (String pantryKey : pantryMap.keySet()) {
+            if (pantryKey.contains(reqName) || reqName.contains(pantryKey)) {
+                return pantryMap.get(pantryKey);
+            }
+        }
+        return null;
     }
 }
