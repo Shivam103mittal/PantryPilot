@@ -24,22 +24,26 @@ public class UserController {
     }
 
     // Updated login to accept JSON body
-    @PostMapping("/login")
-    public Map<String, String> login(@RequestBody Map<String, String> credentials) {
-        String username = credentials.get("username");
-        String password = credentials.get("password");
+@PostMapping("/login")
+public Map<String, String> login(@RequestBody Map<String, String> credentials) {
+    String input = credentials.get("username"); // can be username or email
+    String password = credentials.get("password");
 
-        Optional<User> userOpt = userService.loginUser(username, password);
-        Map<String, String> response = new HashMap<>();
+    Optional<User> userOpt = userService.loginUser(input, password);
+    Map<String, String> response = new HashMap<>();
 
-        if (userOpt.isPresent()) {
-            String token = JwtUtil.generateToken(username);
-            response.put("token", token);
-            response.put("username", username);
-        } else {
-            response.put("error", "Invalid username or password");
-        }
-
-        return response;
+    if (userOpt.isPresent()) {
+        User user = userOpt.get();
+        // Use email in JWT because filter loads user by email
+        String token = JwtUtil.generateToken(user.getEmail());
+        response.put("token", token);
+        response.put("username", user.getUsername());
+        response.put("email", user.getEmail());
+    } else {
+        response.put("error", "Invalid username/email or password");
     }
+
+    return response;
+}
+
 }

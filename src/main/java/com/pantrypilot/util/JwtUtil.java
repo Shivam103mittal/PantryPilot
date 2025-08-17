@@ -9,21 +9,21 @@ import java.util.Date;
 
 public class JwtUtil {
 
-    // Generate a secure random key (256-bit) for HS256
     private static final Key key = Keys.secretKeyFor(SignatureAlgorithm.HS256);
 
-    public static String generateToken(String username) {
+    // Pass user's email here
+    public static String generateToken(String email) {
         long expirationMillis = 1000 * 60 * 60 * 24; // 24 hours
 
         return Jwts.builder()
-                .setSubject(username)
+                .setSubject(email)  // email as subject
                 .setIssuedAt(new Date())
                 .setExpiration(new Date(System.currentTimeMillis() + expirationMillis))
-                .signWith(key) // use secure key
+                .signWith(key)
                 .compact();
     }
 
-    public static String validateTokenAndGetUsername(String token) {
+    public static String validateTokenAndGetEmail(String token) {
         return Jwts.parserBuilder()
                 .setSigningKey(key)
                 .build()
