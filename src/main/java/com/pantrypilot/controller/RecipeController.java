@@ -36,4 +36,15 @@ public class RecipeController {
     public void clearAllRecipes() {
         recipeService.clearAllRecipes();
     }
+
+    // Get a recipe by ID
+@GetMapping("/{id}")
+public ResponseEntity<Recipe> getRecipeById(@PathVariable Long id) {
+    Recipe recipe = recipeService.getRecipeById(id);
+    if (recipe == null) {
+        return ResponseEntity.notFound().build();
+    }
+    return ResponseEntity.ok(recipe);
+}
+
 }

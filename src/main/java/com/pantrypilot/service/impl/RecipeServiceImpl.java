@@ -37,4 +37,9 @@ public class RecipeServiceImpl implements RecipeService {
     public void clearAllRecipes() {
         recipeRepository.deleteAll();
     }
+
+    @Override
+    public Recipe getRecipeById(Long id) {
+        return recipeRepository.findById(id).orElse(null);
+    }
 }
