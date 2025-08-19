@@ -1,13 +1,16 @@
 package com.pantrypilot.service.impl;
 
+import com.pantrypilot.model.PantryIngredient;
 import com.pantrypilot.model.Recipe;
 import com.pantrypilot.model.RecipeIngredient;
 import com.pantrypilot.repository.RecipeRepository;
 import com.pantrypilot.service.RecipeService;
+import com.pantrypilot.util.UnitConverter;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
-import java.util.List;
+import java.util.*;
+import java.util.stream.Collectors;
 
 @Service
 public class RecipeServiceImpl implements RecipeService {
@@ -21,7 +24,6 @@ public class RecipeServiceImpl implements RecipeService {
 
     @Override
     public Recipe saveRecipe(Recipe recipe) {
-        // Set the parent reference for each ingredient
         for (RecipeIngredient ingredient : recipe.getIngredients()) {
             ingredient.setRecipe(recipe);
         }
@@ -41,5 +43,49 @@ public class RecipeServiceImpl implements RecipeService {
     @Override
     public Recipe getRecipeById(Long id) {
         return recipeRepository.findById(id).orElse(null);
+    }
+
+    @Override
+    public List<Recipe> getRecipesByPrepTimeAndIngredients(
+            int minPrepTime,
+            int maxPrepTime,
+            List<PantryIngredient> pantryIngredients
+    ) {
+        Set<String> ingredientNames = pantryIngredients.stream()
+                .map(pi -> pi.getIngredientName().toLowerCase())
+                .collect(Collectors.toSet());
+
+        // Step 1: DB fetch (prepTime + ingredient names)
+        List<Recipe> candidateRecipes = recipeRepository.findByPrepTimeAndIngredients(
+                minPrepTime, maxPrepTime, ingredientNames
+        );
+
+        // Step 2: In-memory filtering (quantity/unit)
+        List<Recipe> filteredRecipes = new ArrayList<>();
+        for (Recipe recipe : candidateRecipes) {
+            boolean allIngredientsAvailable = true;
+
+            for (RecipeIngredient ri : recipe.getIngredients()) {
+                Optional<PantryIngredient> matchingPantry = pantryIngredients.stream()
+                        .filter(pi -> pi.getIngredientName().equalsIgnoreCase(ri.getIngredientName()))
+                        .findFirst();
+
+                if (matchingPantry.isEmpty()) {
+                    allIngredientsAvailable = false;
+                    break;
+                }
+
+                PantryIngredient pi = matchingPantry.get();
+                double availableQty = UnitConverter.convert(pi.getQuantity(), pi.getUnit(), ri.getUnit());
+                if (availableQty < ri.getQuantity()) {
+                    allIngredientsAvailable = false;
+                    break;
+                }
+            }
+
+            if (allIngredientsAvailable) filteredRecipes.add(recipe);
+        }
+
+        return filteredRecipes;
     }
 }

@@ -1,5 +1,6 @@
 package com.pantrypilot.controller;
 
+import com.pantrypilot.model.PantryIngredient;
 import com.pantrypilot.model.Recipe;
 import com.pantrypilot.service.RecipeService;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -7,6 +8,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
+import java.util.Map;
 
 @RestController
 @RequestMapping("/api/recipes")
@@ -38,13 +40,24 @@ public class RecipeController {
     }
 
     // Get a recipe by ID
-@GetMapping("/{id}")
-public ResponseEntity<Recipe> getRecipeById(@PathVariable Long id) {
-    Recipe recipe = recipeService.getRecipeById(id);
-    if (recipe == null) {
-        return ResponseEntity.notFound().build();
+    @GetMapping("/{id}")
+    public ResponseEntity<Recipe> getRecipeById(@PathVariable Long id) {
+        Recipe recipe = recipeService.getRecipeById(id);
+        if (recipe == null) {
+            return ResponseEntity.notFound().build();
+        }
+        return ResponseEntity.ok(recipe);
     }
-    return ResponseEntity.ok(recipe);
-}
+
+    @PostMapping("/filter")
+    public List<Recipe> filterRecipes(
+            @RequestParam int minPrepTime,
+            @RequestParam int maxPrepTime,
+            @RequestBody List<PantryIngredient> pantryIngredients
+    ) {
+        return recipeService.getRecipesByPrepTimeAndIngredients(
+                minPrepTime, maxPrepTime, pantryIngredients
+        );
+    }
 
 }

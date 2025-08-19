@@ -16,11 +16,13 @@ public class RecipeMatcherService {
 
     private final PantryIngredientRepository pantryIngredientRepository;
     private final RecipeRepository recipeRepository;
+    private final RecipeService recipeService;
 
     public RecipeMatcherService(PantryIngredientRepository pantryIngredientRepository,
-                                RecipeRepository recipeRepository) {
+                                RecipeRepository recipeRepository,RecipeService recipeService) {
         this.pantryIngredientRepository = pantryIngredientRepository;
         this.recipeRepository = recipeRepository;
+        this.recipeService = recipeService;
     }
 
     public List<Recipe> matchRecipes(List<PantryIngredient> providedPantry) {
@@ -112,4 +114,10 @@ public class RecipeMatcherService {
         }
         return null;
     }
+
+    public List<Recipe> matchRecipesWithPrepTime(
+        List<PantryIngredient> pantryIngredients, int minPrepTime, int maxPrepTime) {
+    return recipeService.getRecipesByPrepTimeAndIngredients(minPrepTime, maxPrepTime, pantryIngredients);
+}
+
 }

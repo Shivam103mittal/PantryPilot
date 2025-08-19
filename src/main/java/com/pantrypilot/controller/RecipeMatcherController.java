@@ -20,33 +20,41 @@ public class RecipeMatcherController {
 
     private static final int BATCH_SIZE = 3;
 
-    /**
-     * POST endpoint to accept pantry ingredients and return first batch of matched recipes + token.
-     */
+    // -------------------- DTO for frontend POST --------------------
+    public static class MatchRequest {
+        public List<PantryIngredient> ingredients;
+        public int minPrepTime;
+        public int maxPrepTime;
+    }
+
+    // -------------------- POST endpoint --------------------
     @PostMapping
     public ResponseEntity<Map<String, Object>> getMatchingRecipes(
-            @RequestBody List<PantryIngredient> pantryIngredients) {
+            @RequestBody MatchRequest request) {
+
+        List<PantryIngredient> pantryIngredients = request.ingredients;
+        int minPrepTime = request.minPrepTime;
+        int maxPrepTime = request.maxPrepTime;
 
         System.out.println("Received pantry ingredients: " + pantryIngredients.size());
+        System.out.println("Prep time filter: " + minPrepTime + " - " + maxPrepTime);
 
-        List<Recipe> matchedRecipes = recipeMatcherService.matchRecipes(pantryIngredients);
-        System.out.println("Matched recipes count: " + matchedRecipes.size());
+        // Match recipes using pantry ingredients + prep time
+        List<Recipe> matchedRecipes = recipeMatcherService.matchRecipesWithPrepTime(
+                pantryIngredients, minPrepTime, maxPrepTime
+        );
 
+        // Add matched recipes to cache and get a token
         String token = recipeCacheService.addMatchedRecipes(matchedRecipes);
 
-        // Use a mutable list to add AI fallback recipes if needed
+        // Return first batch
         List<Recipe> firstBatch = new ArrayList<>(recipeCacheService.getNextRecipes(token, BATCH_SIZE));
-        System.out.println("First batch size before AI fallback: " + firstBatch.size());
 
-        // Add AI fallback recipes if first batch is less than BATCH_SIZE
+        // AI fallback if batch is small
         if (firstBatch.size() < BATCH_SIZE) {
             int missing = BATCH_SIZE - firstBatch.size();
-            System.out.println("Fetching " + missing + " AI fallback recipes");
-            List<Recipe> aiRecipes = callAiFallback(missing);
-            firstBatch.addAll(aiRecipes);
+            firstBatch.addAll(callAiFallback(missing));
         }
-
-        System.out.println("Returning total " + firstBatch.size() + " recipes");
 
         return ResponseEntity.ok(Map.of(
                 "token", token,
@@ -54,25 +62,19 @@ public class RecipeMatcherController {
         ));
     }
 
-    /**
-     * GET endpoint to return next batch of recipes for the given token.
-     */
+    // -------------------- GET next batch --------------------
     @GetMapping("/{token}")
-    public ResponseEntity<Map<String, Object>> getNextRecipes(
-            @PathVariable String token) {
+    public ResponseEntity<Map<String, Object>> getNextRecipes(@PathVariable String token) {
 
         System.out.println("Received token: " + token);
 
         List<Recipe> nextBatch = new ArrayList<>(recipeCacheService.getNextRecipes(token, BATCH_SIZE));
         System.out.println("Next batch size before AI fallback: " + nextBatch.size());
 
-        int fetchedCount = nextBatch.size();
-
-        if (fetchedCount < BATCH_SIZE) {
-            int missing = BATCH_SIZE - fetchedCount;
+        if (nextBatch.size() < BATCH_SIZE) {
+            int missing = BATCH_SIZE - nextBatch.size();
             System.out.println("Fetching " + missing + " AI fallback recipes");
-            List<Recipe> aiRecipes = callAiFallback(missing);
-            nextBatch.addAll(aiRecipes);
+            nextBatch.addAll(callAiFallback(missing));
         }
 
         System.out.println("Returning total " + nextBatch.size() + " recipes");
@@ -83,15 +85,12 @@ public class RecipeMatcherController {
         ));
     }
 
-    /**
-     * Stub for AI fallback call - returns dummy/generated recipes.
-     * Replace this with real AI integration later.
-     */
+    // -------------------- AI fallback stub --------------------
     private List<Recipe> callAiFallback(int count) {
         List<Recipe> aiGenerated = new ArrayList<>();
         for (int i = 1; i <= count; i++) {
             Recipe r = new Recipe();
-            r.setId(Long.valueOf(-i)); // negative IDs indicate AI-generated recipes
+            r.setId(Long.valueOf(-i)); // negative IDs indicate AI-generated
             r.setTitle("AI Generated Recipe " + i);
             r.setInstructions("This is an AI generated recipe as no matching recipes were found.");
             r.setIngredients(Collections.emptyList());
