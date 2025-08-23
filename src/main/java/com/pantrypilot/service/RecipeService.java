@@ -4,6 +4,7 @@ import com.pantrypilot.model.PantryIngredient;
 import com.pantrypilot.model.Recipe;
 
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 
 public interface RecipeService {
@@ -20,5 +21,9 @@ public interface RecipeService {
             int maxPrepTime,
             List<PantryIngredient> pantryIngredients
     );
+
+    List<Recipe> saveAll(List<Recipe> recipes);
+    Recipe saveAIRecipe(Map<String, Object> aiRecipe);
+    
 
 }

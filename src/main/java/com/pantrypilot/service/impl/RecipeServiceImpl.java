@@ -46,19 +46,26 @@ public class RecipeServiceImpl implements RecipeService {
     }
 
     @Override
+    public List<Recipe> saveAll(List<Recipe> recipes) {
+        List<Recipe> saved = new ArrayList<>();
+        for (Recipe r : recipes) {
+            saved.add(saveRecipe(r));
+        }
+        return saved;
+    }
+
+    @Override
     public List<Recipe> getRecipesByPrepTimeAndIngredients(
             int minPrepTime,
             int maxPrepTime,
-            List<PantryIngredient> pantryIngredients
-    ) {
+            List<PantryIngredient> pantryIngredients) {
         Set<String> ingredientNames = pantryIngredients.stream()
                 .map(pi -> pi.getIngredientName().toLowerCase())
                 .collect(Collectors.toSet());
 
         // Step 1: DB fetch (prepTime + ingredient names)
         List<Recipe> candidateRecipes = recipeRepository.findByPrepTimeAndIngredients(
-                minPrepTime, maxPrepTime, ingredientNames
-        );
+                minPrepTime, maxPrepTime, ingredientNames);
 
         // Step 2: In-memory filtering (quantity/unit)
         List<Recipe> filteredRecipes = new ArrayList<>();
@@ -83,9 +90,35 @@ public class RecipeServiceImpl implements RecipeService {
                 }
             }
 
-            if (allIngredientsAvailable) filteredRecipes.add(recipe);
+            if (allIngredientsAvailable)
+                filteredRecipes.add(recipe);
         }
 
         return filteredRecipes;
     }
+
+    @Override
+public Recipe saveAIRecipe(Map<String, Object> aiRecipe) {
+    Recipe recipe = new Recipe();
+    recipe.setTitle((String) aiRecipe.get("title"));
+    recipe.setInstructions((String) aiRecipe.get("instructions"));
+
+    // Ingredients from AI response
+    List<Map<String, Object>> ingredients = (List<Map<String, Object>>) aiRecipe.get("ingredients");
+    List<RecipeIngredient> recipeIngredients = ingredients.stream()
+            .map(ing -> {
+                RecipeIngredient ri = new RecipeIngredient();
+                ri.setIngredientName((String) ing.get("ingredientName"));
+                ri.setQuantity(Double.parseDouble(ing.get("quantity").toString()));
+                ri.setUnit((String) ing.get("unit"));
+                ri.setRecipe(recipe); // important to set back-reference
+                return ri;
+            })
+            .toList();
+
+    recipe.setIngredients(recipeIngredients);
+
+    return recipeRepository.save(recipe);
+}
+
 }
