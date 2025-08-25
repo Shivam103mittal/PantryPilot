@@ -1,7 +1,7 @@
 package com.pantrypilot.controller;
 
+import com.pantrypilot.dto.RecipeDTO;
 import com.pantrypilot.model.PantryIngredient;
-import com.pantrypilot.model.Recipe;
 import com.pantrypilot.service.RecipeMatcherService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
@@ -25,48 +25,51 @@ public class RecipeMatcherController {
         public int maxPrepTime;
     }
 
-    // -------------------- POST endpoint --------------------
+    // -------------------- POST endpoint (first call) --------------------
     @PostMapping
     public ResponseEntity<Map<String, Object>> getMatchingRecipes(@RequestBody MatchRequest request) throws Exception {
 
-        List<PantryIngredient> pantryIngredients = request.ingredients != null ? request.ingredients : Collections.emptyList();
+        // ✅ Always required on first call
+        List<PantryIngredient> pantryIngredients = request.ingredients != null ? request.ingredients
+                : Collections.emptyList();
         int minPrepTime = request.minPrepTime;
         int maxPrepTime = request.maxPrepTime;
 
         System.out.println("Received pantry ingredients: " + pantryIngredients.size());
         System.out.println("Prep time filter: " + minPrepTime + " - " + maxPrepTime);
 
-        // ✅ Service now returns token directly after caching
+        // ✅ Service creates cache with recipes + input filters + token
         String token = recipeMatcherService.matchRecipesWithCache(
-                pantryIngredients, minPrepTime, maxPrepTime, BATCH_SIZE
-        );
+                pantryIngredients, minPrepTime, maxPrepTime, BATCH_SIZE);
 
         // ✅ Fetch first batch of recipes
-        List<Recipe> firstBatch = recipeMatcherService.getNextBatch(token, BATCH_SIZE);
+        List<RecipeDTO> firstBatch = recipeMatcherService.getNextBatch(token, BATCH_SIZE);
 
         if (firstBatch.isEmpty()) {
             return ResponseEntity.ok(Map.of(
                     "token", token,
                     "recipes", Collections.emptyList(),
-                    "message", "No recipes found for given ingredients and prep time."
-            ));
+                    "message", "No recipes found for given ingredients and prep time."));
         }
 
         return ResponseEntity.ok(Map.of(
                 "token", token,
-                "recipes", firstBatch
-        ));
+                "recipes", firstBatch));
     }
 
-    // -------------------- GET next batch --------------------
+    // -------------------- GET next batch (subsequent calls) --------------------
     @GetMapping("/{token}")
     public ResponseEntity<Map<String, Object>> getNextRecipes(@PathVariable String token) {
+        try {
+            List<RecipeDTO> nextBatch = recipeMatcherService.getNextBatch(token, BATCH_SIZE);
 
-        List<Recipe> nextBatch = recipeMatcherService.getNextBatch(token, BATCH_SIZE);
-
-        return ResponseEntity.ok(Map.of(
-                "token", token,
-                "recipes", nextBatch
-        ));
+            return ResponseEntity.ok(Map.of(
+                    "token", token,
+                    "recipes", nextBatch));
+        } catch (Exception e) {
+            return ResponseEntity.internalServerError().body(Map.of(
+                    "error", "Failed to fetch next batch: " + e.getMessage()));
+        }
     }
+
 }

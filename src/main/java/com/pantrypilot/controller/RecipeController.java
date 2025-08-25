@@ -8,7 +8,6 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
-import java.util.Map;
 
 @RestController
 @RequestMapping("/api/recipes")
@@ -39,6 +38,11 @@ public class RecipeController {
         recipeService.clearAllRecipes();
     }
 
+    @DeleteMapping("/{id}")
+    public void deleteRecipeById(@PathVariable Long id) {
+        recipeService.deleteRecipeById(id);
+    }
+
     // Get a recipe by ID
     @GetMapping("/{id}")
     public ResponseEntity<Recipe> getRecipeById(@PathVariable Long id) {
@@ -53,11 +57,9 @@ public class RecipeController {
     public List<Recipe> filterRecipes(
             @RequestParam int minPrepTime,
             @RequestParam int maxPrepTime,
-            @RequestBody List<PantryIngredient> pantryIngredients
-    ) {
+            @RequestBody List<PantryIngredient> pantryIngredients) {
         return recipeService.getRecipesByPrepTimeAndIngredients(
-                minPrepTime, maxPrepTime, pantryIngredients
-        );
+                minPrepTime, maxPrepTime, pantryIngredients);
     }
 
 }

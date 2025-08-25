@@ -1,11 +1,14 @@
 package com.pantrypilot.service;
 
 import com.pantrypilot.model.PantryIngredient;
+import com.pantrypilot.dto.RecipeDTO;
 import com.pantrypilot.model.Recipe;
 import com.pantrypilot.model.RecipeIngredient;
 import com.pantrypilot.repository.PantryIngredientRepository;
 import com.pantrypilot.repository.RecipeRepository;
 import com.pantrypilot.util.UnitConverter;
+
+import org.springframework.transaction.annotation.Transactional;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
@@ -22,63 +25,142 @@ public class RecipeMatcherService {
     private final RecipeAIService recipeAIService;
     private final RecipeCacheService recipeCacheService;
 
+    private static final int MAX_AI_RETRIES = 3; // safeguard against infinite loop
+
     /**
      * Match recipes with prep time filter.
      * Falls back to AI if DB has fewer than batchSize recipes.
-     * Adds results to cache and returns a token for pagination.
+     * Adds results to cache as DTOs and returns a token.
      */
+    @Transactional
     public String matchRecipesWithCache(
             List<PantryIngredient> pantryIngredients,
             int minPrepTime,
             int maxPrepTime,
-            int batchSize
-    ) throws Exception {
+            int batchSize) throws Exception {
 
-        if (pantryIngredients == null) pantryIngredients = Collections.emptyList();
+        if (pantryIngredients == null)
+            pantryIngredients = Collections.emptyList();
 
-        // Step 1: fetch DB recipes
         List<Recipe> matchedRecipes = recipeService.getRecipesByPrepTimeAndIngredients(
-                minPrepTime, maxPrepTime, pantryIngredients
-        );
+                minPrepTime, maxPrepTime, pantryIngredients);
 
-        // Step 2: Determine if AI fallback is needed
         if (matchedRecipes.size() < batchSize) {
             int missing = batchSize - matchedRecipes.size();
 
-            List<Map<String, Object>> ingredientsForAI = pantryIngredients.stream()
-                    .map(pi -> {
-                        Map<String, Object> m = new HashMap<>();
-                        m.put("ingredientName", pi.getIngredientName());
-                        m.put("quantity", pi.getQuantity());
-                        m.put("unit", pi.getUnit());
-                        return m;
-                    })
-                    .collect(Collectors.toList());
-
-            List<Recipe> aiRecipes = recipeAIService.generateRecipes(
-                    ingredientsForAI,
+            List<Recipe> aiRecipes = fetchValidAIRecipes(
+                    pantryIngredients,
                     minPrepTime,
                     maxPrepTime,
                     matchedRecipes.stream()
-                            .map(Recipe::getTitle)
-                            .filter(Objects::nonNull)
-                            .map(String::toLowerCase)
+                            .map(r -> r.getTitle().toLowerCase())
                             .collect(Collectors.toSet()),
-                    missing
-            );
+                    missing);
 
             matchedRecipes.addAll(aiRecipes);
         }
 
-        // Step 3: Add combined recipes + pantry to cache
-        return recipeCacheService.addMatchedRecipes(matchedRecipes, pantryIngredients);
+        // ✅ Convert recipes to DTOs before caching
+        List<RecipeDTO> dtoRecipes = matchedRecipes.stream()
+                .map(RecipeDTO::new)
+                .collect(Collectors.toList());
+
+        // ✅ Cache with prep times
+        return recipeCacheService.addMatchedRecipes(dtoRecipes, pantryIngredients, minPrepTime, maxPrepTime);
     }
 
     /**
-     * Returns next batch of recipes for a token.
+     * Returns next batch of RecipeDTOs for a token.
+     * Falls back to AI if cache is exhausted.
      */
-    public List<Recipe> getNextBatch(String token, int batchSize) {
-        return recipeCacheService.getNextRecipes(token, batchSize);
+    @Transactional
+    public List<RecipeDTO> getNextBatch(String token, int batchSize) throws Exception {
+        List<RecipeDTO> batch = recipeCacheService.getNextRecipes(token, batchSize);
+
+        if (batch.isEmpty() && recipeCacheService.isExhausted(token)) {
+            System.out.println("Cache exhausted for token: " + token + " → falling back to AI");
+
+            // pull filters & ingredients from cache
+            int minPrep = recipeCacheService.getMinPrepTime(token);
+            int maxPrep = recipeCacheService.getMaxPrepTime(token);
+            List<PantryIngredient> pantryIngredients = recipeCacheService.getCachedIngredients(token);
+            Set<String> alreadySeenTitles = recipeCacheService.getPresentedTitles(token);
+
+            // fetch fresh recipes (guaranteed valid titles)
+            List<Recipe> aiRecipes = fetchValidAIRecipes(
+                    pantryIngredients,
+                    minPrep,
+                    maxPrep,
+                    alreadySeenTitles,
+                    batchSize);
+
+            List<RecipeDTO> dtoRecipes = aiRecipes.stream()
+                    .map(RecipeDTO::new)
+                    .toList();
+
+            // add to cache
+            recipeCacheService.addMoreRecipes(token, dtoRecipes);
+
+            // now retrieve
+            return recipeCacheService.getNextRecipes(token, batchSize);
+        }
+
+        return batch;
+    }
+
+    /**
+     * Helper to repeatedly fetch AI recipes until enough valid ones are collected.
+     */
+    private List<Recipe> fetchValidAIRecipes(
+            List<PantryIngredient> pantryIngredients,
+            int minPrepTime,
+            int maxPrepTime,
+            Set<String> alreadySeenTitles,
+            int required) throws Exception {
+
+        List<Map<String, Object>> ingredientsForAI = pantryIngredients.stream()
+                .map(pi -> {
+                    Map<String, Object> m = new HashMap<>();
+                    m.put("ingredientName", pi.getIngredientName());
+                    m.put("quantity", pi.getQuantity());
+                    m.put("unit", pi.getUnit());
+                    return m;
+                })
+                .collect(Collectors.toList());
+
+        List<Recipe> validRecipes = new ArrayList<>();
+        int attempts = 0;
+
+        while (validRecipes.size() < required && attempts < MAX_AI_RETRIES) {
+            attempts++;
+
+            int stillNeeded = required - validRecipes.size();
+            List<Recipe> aiRecipes = recipeAIService.generateRecipes(
+                    ingredientsForAI,
+                    minPrepTime,
+                    maxPrepTime,
+                    alreadySeenTitles,
+                    stillNeeded);
+
+            // ✅ Normalize excluded titles once
+            Set<String> lowerExcluded = alreadySeenTitles.stream()
+                    .map(String::toLowerCase)
+                    .collect(Collectors.toSet());
+
+            // ✅ filter out: null/empty titles AND ones already seen
+            aiRecipes = aiRecipes.stream()
+                    .filter(r -> r.getTitle() != null && !r.getTitle().trim().isEmpty())
+                    .filter(r -> !lowerExcluded.contains(r.getTitle().toLowerCase()))
+                    .toList();
+
+            // ✅ Add to results and mark as seen
+            validRecipes.addAll(aiRecipes);
+            alreadySeenTitles.addAll(aiRecipes.stream()
+                    .map(r -> r.getTitle().toLowerCase())
+                    .toList());
+        }
+
+        return validRecipes;
     }
 
     /**
@@ -94,8 +176,7 @@ public class RecipeMatcherService {
                 .collect(Collectors.toMap(
                         pi -> normalizeName(pi.getIngredientName()),
                         pi -> pi,
-                        (pi1, pi2) -> pi1
-                ));
+                        (pi1, pi2) -> pi1));
 
         List<Recipe> allRecipes = recipeRepository.findAll();
         List<Recipe> matchedRecipes = new ArrayList<>();
@@ -112,19 +193,23 @@ public class RecipeMatcherService {
     // --- Helper methods ---
 
     private boolean canMakeRecipe(Recipe recipe, Map<String, PantryIngredient> pantryMap) {
-        if (recipe.getIngredients() == null) return false;
+        if (recipe.getIngredients() == null)
+            return false;
 
         for (RecipeIngredient req : recipe.getIngredients()) {
-            if (req.getIngredientName() == null) return false;
+            if (req.getIngredientName() == null)
+                return false;
 
             String reqName = normalizeName(req.getIngredientName());
             String reqUnit = normalizeUnit(req.getUnit());
 
             PantryIngredient pantry = findPantryMatch(reqName, pantryMap);
-            if (pantry == null) return false;
+            if (pantry == null)
+                return false;
 
             double pantryQty = UnitConverter.convert(pantry.getQuantity(), pantry.getUnit(), reqUnit);
-            if (pantryQty < req.getQuantity()) return false;
+            if (pantryQty < req.getQuantity())
+                return false;
         }
         return true;
     }
@@ -138,7 +223,8 @@ public class RecipeMatcherService {
     }
 
     private PantryIngredient findPantryMatch(String reqName, Map<String, PantryIngredient> pantryMap) {
-        if (pantryMap.containsKey(reqName)) return pantryMap.get(reqName);
+        if (pantryMap.containsKey(reqName))
+            return pantryMap.get(reqName);
 
         // singular/plural fallback
         if (reqName.endsWith("es") && pantryMap.containsKey(reqName.substring(0, reqName.length() - 2))) {

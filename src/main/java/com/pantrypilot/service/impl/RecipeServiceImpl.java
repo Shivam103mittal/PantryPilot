@@ -31,6 +31,11 @@ public class RecipeServiceImpl implements RecipeService {
     }
 
     @Override
+    public void deleteRecipeById(Long id) {
+        recipeRepository.deleteById(id);
+    }
+
+    @Override
     public List<Recipe> getAllRecipes() {
         return recipeRepository.findAll();
     }
@@ -98,27 +103,41 @@ public class RecipeServiceImpl implements RecipeService {
     }
 
     @Override
-public Recipe saveAIRecipe(Map<String, Object> aiRecipe) {
-    Recipe recipe = new Recipe();
-    recipe.setTitle((String) aiRecipe.get("title"));
-    recipe.setInstructions((String) aiRecipe.get("instructions"));
+    public Recipe saveAIRecipe(Map<String, Object> aiRecipe) {
+        String title = (String) aiRecipe.get("title");
 
-    // Ingredients from AI response
-    List<Map<String, Object>> ingredients = (List<Map<String, Object>>) aiRecipe.get("ingredients");
-    List<RecipeIngredient> recipeIngredients = ingredients.stream()
-            .map(ing -> {
-                RecipeIngredient ri = new RecipeIngredient();
-                ri.setIngredientName((String) ing.get("ingredientName"));
-                ri.setQuantity(Double.parseDouble(ing.get("quantity").toString()));
-                ri.setUnit((String) ing.get("unit"));
-                ri.setRecipe(recipe); // important to set back-reference
-                return ri;
-            })
-            .toList();
+        // 🚫 Skip invalid recipes
+        if (title == null || title.trim().isEmpty()) {
+            return null;
+        }
 
-    recipe.setIngredients(recipeIngredients);
+        // ✅ Check for duplicates
+        Optional<Recipe> existing = recipeRepository.findByTitle(title);
+        if (existing.isPresent()) {
+            return existing.get();
+        }
 
-    return recipeRepository.save(recipe);
-}
+        // 🆕 Create new recipe
+        Recipe recipe = new Recipe();
+        recipe.setTitle(title);
+        recipe.setInstructions((String) aiRecipe.get("instructions"));
+
+        // Ingredients from AI response
+        List<Map<String, Object>> ingredients = (List<Map<String, Object>>) aiRecipe.get("ingredients");
+        List<RecipeIngredient> recipeIngredients = ingredients.stream()
+                .map(ing -> {
+                    RecipeIngredient ri = new RecipeIngredient();
+                    ri.setIngredientName((String) ing.get("ingredientName"));
+                    ri.setQuantity(Double.parseDouble(ing.get("quantity").toString()));
+                    ri.setUnit((String) ing.get("unit"));
+                    ri.setRecipe(recipe); // back-reference
+                    return ri;
+                })
+                .toList();
+
+        recipe.setIngredients(recipeIngredients);
+
+        return recipeRepository.save(recipe);
+    }
 
 }

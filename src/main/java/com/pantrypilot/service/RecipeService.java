@@ -14,16 +14,17 @@ public interface RecipeService {
 
     void clearAllRecipes();
 
+    void deleteRecipeById(Long id);
+
     Recipe getRecipeById(Long id);
 
     List<Recipe> getRecipesByPrepTimeAndIngredients(
             int minPrepTime,
             int maxPrepTime,
-            List<PantryIngredient> pantryIngredients
-    );
+            List<PantryIngredient> pantryIngredients);
 
     List<Recipe> saveAll(List<Recipe> recipes);
+
     Recipe saveAIRecipe(Map<String, Object> aiRecipe);
-    
 
 }
