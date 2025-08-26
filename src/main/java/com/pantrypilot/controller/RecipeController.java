@@ -3,7 +3,6 @@ package com.pantrypilot.controller;
 import com.pantrypilot.model.PantryIngredient;
 import com.pantrypilot.model.Recipe;
 import com.pantrypilot.service.RecipeService;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
@@ -14,8 +13,6 @@ import java.util.List;
 public class RecipeController {
 
     private final RecipeService recipeService;
-
-    @Autowired
     public RecipeController(RecipeService recipeService) {
         this.recipeService = recipeService;
     }

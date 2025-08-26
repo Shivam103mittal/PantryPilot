@@ -6,7 +6,6 @@ import com.pantrypilot.model.RecipeIngredient;
 import com.pantrypilot.repository.RecipeRepository;
 import com.pantrypilot.service.RecipeService;
 import com.pantrypilot.util.UnitConverter;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
 import java.util.*;
@@ -17,7 +16,6 @@ public class RecipeServiceImpl implements RecipeService {
 
     private final RecipeRepository recipeRepository;
 
-    @Autowired
     public RecipeServiceImpl(RecipeRepository recipeRepository) {
         this.recipeRepository = recipeRepository;
     }
@@ -60,47 +58,48 @@ public class RecipeServiceImpl implements RecipeService {
     }
 
     @Override
-    public List<Recipe> getRecipesByPrepTimeAndIngredients(
-            int minPrepTime,
-            int maxPrepTime,
-            List<PantryIngredient> pantryIngredients) {
-        Set<String> ingredientNames = pantryIngredients.stream()
-                .map(pi -> pi.getIngredientName().toLowerCase())
-                .collect(Collectors.toSet());
+public List<Recipe> getRecipesByPrepTimeAndIngredients(
+        int minPrepTime,
+        int maxPrepTime,
+        List<PantryIngredient> pantryIngredients) {
+            
+    Set<String> ingredientNames = pantryIngredients.stream()
+            .map(pi -> pi.getIngredientName().toLowerCase())
+            .collect(Collectors.toSet());
 
-        // Step 1: DB fetch (prepTime + ingredient names)
-        List<Recipe> candidateRecipes = recipeRepository.findByPrepTimeAndIngredients(
-                minPrepTime, maxPrepTime, ingredientNames);
+    // Step 1: DB fetch (prepTime + ingredient names)
+    List<Recipe> candidateRecipes = recipeRepository.findByPrepTimeAndIngredients(
+            minPrepTime, maxPrepTime, ingredientNames);
 
-        // Step 2: In-memory filtering (quantity/unit)
-        List<Recipe> filteredRecipes = new ArrayList<>();
-        for (Recipe recipe : candidateRecipes) {
-            boolean allIngredientsAvailable = true;
+    // Step 2: In-memory filtering (quantity/unit + 80% threshold)
+    List<Recipe> filteredRecipes = new ArrayList<>();
+    for (Recipe recipe : candidateRecipes) {
+        int totalIngredients = recipe.getIngredients().size();
+        int matchedCount = 0;
 
-            for (RecipeIngredient ri : recipe.getIngredients()) {
-                Optional<PantryIngredient> matchingPantry = pantryIngredients.stream()
-                        .filter(pi -> pi.getIngredientName().equalsIgnoreCase(ri.getIngredientName()))
-                        .findFirst();
+        for (RecipeIngredient ri : recipe.getIngredients()) {
+            Optional<PantryIngredient> matchingPantry = pantryIngredients.stream()
+                    .filter(pi -> pi.getIngredientName().equalsIgnoreCase(ri.getIngredientName()))
+                    .findFirst();
 
-                if (matchingPantry.isEmpty()) {
-                    allIngredientsAvailable = false;
-                    break;
-                }
-
+            if (matchingPantry.isPresent()) {
                 PantryIngredient pi = matchingPantry.get();
                 double availableQty = UnitConverter.convert(pi.getQuantity(), pi.getUnit(), ri.getUnit());
-                if (availableQty < ri.getQuantity()) {
-                    allIngredientsAvailable = false;
-                    break;
+                if (availableQty >= ri.getQuantity()) {
+                    matchedCount++;
                 }
             }
-
-            if (allIngredientsAvailable)
-                filteredRecipes.add(recipe);
         }
 
-        return filteredRecipes;
+        double matchRatio = (double) matchedCount / totalIngredients;
+        if (matchRatio >= 0.8) {  // ✅ at least 80% ingredients available
+            filteredRecipes.add(recipe);
+        }
     }
+
+    return filteredRecipes;
+}
+
 
     @Override
     public Recipe saveAIRecipe(Map<String, Object> aiRecipe) {

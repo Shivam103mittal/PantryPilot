@@ -9,7 +9,6 @@ import com.pantrypilot.model.RecipeIngredient;
 import com.pantrypilot.repository.RecipeRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -113,10 +112,15 @@ public class RecipeAIService {
                     ing.get("quantity") + " " + ing.get("unit") + " " + ing.get("ingredientName"));
         }
         sb.append(String.join(", ", formattedIngredients)).append(". ");
-        sb.append("You may optionally add common veg household items. ");
+
+        int targetTotal = (int) Math.floor(ingredients.size() / 0.8);
+        int requiredExtra = targetTotal - ingredients.size();
+
+        sb.append("You may add atmost ").append(requiredExtra)
+          .append(" additional common veg household ingredients beyond the provided ones and not more than that. ");
 
         if (!excludedTitles.isEmpty()) {
-            sb.append("Do not use titles: ").append(String.join(", ", excludedTitles)).append(". ");
+            sb.append("Strictly do not use previous titles ");
         }
 
         sb.append(
@@ -125,6 +129,7 @@ public class RecipeAIService {
                 .append("), ingredients (ingredientName(string), quantity(int), unit(pcs,tbsp,l,g)). ");
         return sb.toString();
     }
+
 
     private String cleanJson(String text) {
         // remove // comments
