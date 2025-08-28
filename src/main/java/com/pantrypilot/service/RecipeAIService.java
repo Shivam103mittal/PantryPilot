@@ -113,7 +113,7 @@ public class RecipeAIService {
         }
         sb.append(String.join(", ", formattedIngredients)).append(". ");
 
-        int targetTotal = (int) Math.floor(ingredients.size() / 0.8);
+        int targetTotal = (int) Math.floor(ingredients.size() / 0.75);
         int requiredExtra = targetTotal - ingredients.size();
 
         sb.append("You may add atmost ").append(requiredExtra)

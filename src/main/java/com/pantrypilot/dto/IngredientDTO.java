@@ -1,7 +1,6 @@
 package com.pantrypilot.dto;
 
 import com.pantrypilot.model.RecipeIngredient;
-import com.pantrypilot.service.IngredientImageService;
 
 import lombok.AllArgsConstructor;
 import lombok.Data;

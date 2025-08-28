@@ -92,7 +92,7 @@ public class RecipeServiceImpl implements RecipeService {
             }
 
             double matchRatio = (double) matchedCount / totalIngredients;
-            if (matchRatio >= 0.8) { // ✅ at least 80% ingredients available
+            if (matchRatio >= 0.75) { // ✅ at least 75% ingredients available
                 filteredRecipes.add(recipe);
             }
         }
