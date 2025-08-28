@@ -17,18 +17,18 @@ public class RecipeCacheService {
         List<PantryIngredient> pantryIngredients;
         int currentIndex;
         Set<String> presentedTitles;
-        Set<String> aiTitles;          // track AI-generated recipe titles
-        Set<String> allCachedTitles;   // NEW: Track all unique titles ever added to this cache entry
+        Set<String> aiTitles; // track AI-generated recipe titles
+        Set<String> allCachedTitles; // NEW: Track all unique titles ever added to this cache entry
         long createdAt;
         int minPrepTime;
         int maxPrepTime;
-        int aiRecipesServed;           // AI recipes already served
+        int aiRecipesServed; // AI recipes already served
 
         CacheEntry(List<RecipeDTO> recipes,
-                   List<PantryIngredient> pantryIngredients,
-                   int minPrepTime,
-                   int maxPrepTime,
-                   Set<String> aiTitles) {
+                List<PantryIngredient> pantryIngredients,
+                int minPrepTime,
+                int maxPrepTime,
+                Set<String> aiTitles) {
             this.recipes = new ArrayList<>();
             this.pantryIngredients = pantryIngredients != null ? new ArrayList<>(pantryIngredients) : new ArrayList<>();
             this.currentIndex = 0;
@@ -52,34 +52,44 @@ public class RecipeCacheService {
 
     private final Map<String, CacheEntry> cache = new ConcurrentHashMap<>();
 
-    /** Adds matched recipes DTOs + pantry ingredients + prep time filters to cache and returns a token. */
+    /**
+     * Adds matched recipes DTOs + pantry ingredients + prep time filters to cache
+     * and returns a token.
+     */
     public String addMatchedRecipes(List<RecipeDTO> matchedRecipes,
-                                    List<PantryIngredient> pantryIngredients,
-                                    int minPrepTime,
-                                    int maxPrepTime,
-                                    Set<String> aiTitles) {
+            List<PantryIngredient> pantryIngredients,
+            int minPrepTime,
+            int maxPrepTime,
+            Set<String> aiTitles) {
 
-        if (matchedRecipes == null) matchedRecipes = Collections.emptyList();
-        
+        if (matchedRecipes == null)
+            matchedRecipes = Collections.emptyList();
+
         String token = UUID.randomUUID().toString();
         // The CacheEntry constructor now handles initial de-duplication
         CacheEntry newEntry = new CacheEntry(matchedRecipes, pantryIngredients, minPrepTime, maxPrepTime, aiTitles);
         cache.put(token, newEntry);
-        
-        System.out.println("Adding matched recipes to cache, count: " + newEntry.recipes.size()); // Log actual count after de-dupe
+
+        System.out.println("Adding matched recipes to cache, count: " + newEntry.recipes.size()); // Log actual count
+                                                                                                  // after de-dupe
         System.out.println("Generated token: " + token);
         return token;
     }
 
-    /** Appends new RecipeDTOs to an existing cache entry. If fromAI is true, adds titles to aiTitles. */
+    /**
+     * Appends new RecipeDTOs to an existing cache entry. If fromAI is true, adds
+     * titles to aiTitles.
+     */
     public void addMoreRecipes(String token, List<RecipeDTO> newRecipes, boolean fromAI) {
-        if (token == null || newRecipes == null || newRecipes.isEmpty()) return;
+        if (token == null || newRecipes == null || newRecipes.isEmpty())
+            return;
 
         CacheEntry entry = cache.get(token);
         if (entry != null) {
             List<RecipeDTO> recipesToAdd = newRecipes.stream()
-                .filter(recipe -> recipe.getTitle() != null && !entry.allCachedTitles.contains(recipe.getTitle().toLowerCase()))
-                .collect(Collectors.toList());
+                    .filter(recipe -> recipe.getTitle() != null
+                            && !entry.allCachedTitles.contains(recipe.getTitle().toLowerCase()))
+                    .collect(Collectors.toList());
 
             entry.recipes.addAll(recipesToAdd);
             for (RecipeDTO recipe : recipesToAdd) {
@@ -88,13 +98,15 @@ public class RecipeCacheService {
                     entry.aiTitles.add(recipe.getTitle().toLowerCase());
                 }
             }
-            System.out.println("Appended " + recipesToAdd.size() + " unique recipes to cache token " + token + " fromAI=" + fromAI);
+            System.out.println("Appended " + recipesToAdd.size() + " unique recipes to cache token " + token
+                    + " fromAI=" + fromAI);
         }
     }
 
     /** Returns the next batch of recipes respecting AI limit of 5 per session. */
     public List<RecipeDTO> getNextRecipes(String token, int batchSize) {
-        if (token == null || batchSize <= 0) return Collections.emptyList();
+        if (token == null || batchSize <= 0)
+            return Collections.emptyList();
 
         CacheEntry entry = cache.get(token);
         if (entry == null) {
@@ -103,18 +115,19 @@ public class RecipeCacheService {
         }
 
         List<RecipeDTO> nextBatch = new ArrayList<>();
-        int originalIndex = entry.currentIndex; // Store original index
 
         while (nextBatch.size() < batchSize && entry.currentIndex < entry.recipes.size()) {
             RecipeDTO recipe = entry.recipes.get(entry.currentIndex);
             entry.currentIndex++; // Increment currentIndex regardless of whether it's added to batch
 
-            if (recipe.getTitle() == null) continue;
+            if (recipe.getTitle() == null)
+                continue;
 
             String titleKey = recipe.getTitle().toLowerCase();
 
             // Check if already presented in THIS batch or previous batches for this token
-            if (entry.presentedTitles.contains(titleKey)) continue;
+            if (entry.presentedTitles.contains(titleKey))
+                continue;
 
             boolean isAI = entry.aiTitles.contains(titleKey);
 
@@ -126,7 +139,8 @@ public class RecipeCacheService {
 
             nextBatch.add(recipe);
             entry.presentedTitles.add(titleKey);
-            if (isAI) entry.aiRecipesServed++;
+            if (isAI)
+                entry.aiRecipesServed++;
         }
 
         System.out.println("Returning " + nextBatch.size() + " recipes for token " + token);
@@ -160,7 +174,8 @@ public class RecipeCacheService {
     }
 
     public void removeToken(String token) {
-        if (token != null) cache.remove(token);
+        if (token != null)
+            cache.remove(token);
     }
 
     public void evictExpiredEntries(long ttlMillis) {

@@ -1,6 +1,8 @@
 package com.pantrypilot.dto;
 
 import com.pantrypilot.model.RecipeIngredient;
+import com.pantrypilot.service.IngredientImageService;
+
 import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
@@ -13,6 +15,7 @@ public class IngredientDTO {
     private String ingredientName;
     private double quantity;
     private String unit;
+    private String imageUrl;
 
     // Convenience constructor to convert RecipeIngredient → IngredientDTO
     public IngredientDTO(RecipeIngredient ri) {
@@ -20,5 +23,6 @@ public class IngredientDTO {
         this.ingredientName = ri.getIngredientName();
         this.quantity = ri.getQuantity();
         this.unit = ri.getUnit();
+        this.imageUrl = null;
     }
 }
