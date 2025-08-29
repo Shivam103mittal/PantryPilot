@@ -51,8 +51,10 @@ public class RecipeMatcherService {
         // This set will only contain titles from the initial DB match, before AI is
         // called
         Set<String> initialDbTitles = matchedRecipes.stream()
-                .map(r -> r.getTitle().toLowerCase())
-                .collect(Collectors.toSet());
+                .map(Recipe::getTitle)
+        .filter(Objects::nonNull)                  // ignore null titles
+        .map(String::toLowerCase)
+        .collect(Collectors.toSet());
 
         Set<String> aiTitlesGeneratedInThisCall = new HashSet<>();
 
@@ -229,8 +231,10 @@ public class RecipeMatcherService {
             // this loop
             validRecipes.addAll(newUniqueRecipes);
             newUniqueRecipes.stream()
-                    .map(r -> r.getTitle().toLowerCase())
-                    .forEach(localExcludedTitles::add); // Add new unique titles to localExcludedTitles
+                    .map(Recipe::getTitle)
+        .filter(Objects::nonNull)                  // <- add this
+        .map(String::toLowerCase)
+        .forEach(localExcludedTitles::add);
         }
 
         return validRecipes;
