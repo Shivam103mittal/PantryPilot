@@ -4,6 +4,7 @@ import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.genai.Client;
 import com.google.genai.types.GenerateContentResponse;
+import com.google.genai.types.HttpOptions;
 import com.pantrypilot.model.Recipe;
 import com.pantrypilot.model.RecipeIngredient;
 import com.pantrypilot.repository.RecipeRepository;
@@ -19,7 +20,7 @@ import java.util.stream.Collectors;
 @RequiredArgsConstructor
 public class RecipeAIService {
 
-    @Value("${gemini.api.key}") // <-- Gemini key from application.properties
+    @Value("${gemini.api.key}")
     private String geminiApiKey;
 
     private final ObjectMapper objectMapper = new ObjectMapper();
@@ -41,14 +42,15 @@ public class RecipeAIService {
             String prompt = buildPrompt(ingredients, minPrepTime, maxPrepTime, excludedTitles, count);
             System.out.println("Gemini Prompt: " + prompt);
 
-            // 2. Create Gemini client
+            // 2. Create Gemini client with v1 API
             Client client = Client.builder()
                     .apiKey(geminiApiKey)
+                    .httpOptions(HttpOptions.builder().apiVersion("v1").build())
                     .build();
 
-            // 3. Call Gemini API
+            // 3. Call Gemini API with Gemini 2.5 Flash
             GenerateContentResponse resp = client.models.generateContent(
-                    "gemini-1.5-flash",
+                    "gemini-2.5-flash",
                     prompt,
                     null);
 

@@ -1,4 +1,3 @@
-// Save this code!
 package com.pantrypilot.service;
 
 import com.pantrypilot.model.PantryIngredient;
@@ -28,13 +27,8 @@ public class RecipeMatcherService {
     private final RecipeCacheService recipeCacheService;
     private final IngredientImageService ingredientImageService;
 
-    private static final int MAX_AI_RETRIES = 3; // safeguard against infinite loop
+    private static final int MAX_AI_RETRIES = 3;
 
-    /**
-     * Match recipes with prep time filter.
-     * Falls back to AI if DB has fewer than batchSize recipes.
-     * Adds results to cache as DTOs and returns a token.
-     */
     @Transactional
     public String matchRecipesWithCache(
             List<PantryIngredient> pantryIngredients,
@@ -48,13 +42,11 @@ public class RecipeMatcherService {
         List<Recipe> matchedRecipes = recipeService.getRecipesByPrepTimeAndIngredients(
                 minPrepTime, maxPrepTime, pantryIngredients);
 
-        // This set will only contain titles from the initial DB match, before AI is
-        // called
         Set<String> initialDbTitles = matchedRecipes.stream()
                 .map(Recipe::getTitle)
-        .filter(Objects::nonNull)                  // ignore null titles
-        .map(String::toLowerCase)
-        .collect(Collectors.toSet());
+                .filter(Objects::nonNull)
+                .map(String::toLowerCase)
+                .collect(Collectors.toSet());
 
         Set<String> aiTitlesGeneratedInThisCall = new HashSet<>();
 
@@ -65,17 +57,15 @@ public class RecipeMatcherService {
                     pantryIngredients,
                     minPrepTime,
                     maxPrepTime,
-                    initialDbTitles, // Pass only the DB titles as excluded for the first AI call
+                    initialDbTitles,
                     missing);
 
             matchedRecipes.addAll(aiRecipes);
             aiTitlesGeneratedInThisCall.addAll(aiRecipes.stream()
                     .map(r -> r.getTitle().toLowerCase())
-                    .collect(Collectors.toList())); // Use collect for clarity
+                    .collect(Collectors.toList()));
         }
 
-        // Convert recipes to DTOs before caching
-        // Convert recipes to DTOs with enriched ingredient images
         List<RecipeDTO> dtoRecipes = matchedRecipes.stream()
                 .map(recipe -> {
                     List<IngredientDTO> enrichedIngredients = recipe.getIngredients().stream()
@@ -91,18 +81,10 @@ public class RecipeMatcherService {
                 })
                 .collect(Collectors.toList());
 
-        // Cache with prep times. The RecipeCacheService.addMatchedRecipes will handle
-        // de-duplication
-        // and populate its internal allCachedTitles set with the unique titles from
-        // dtoRecipes.
         return recipeCacheService.addMatchedRecipes(dtoRecipes, pantryIngredients, minPrepTime, maxPrepTime,
                 aiTitlesGeneratedInThisCall);
     }
 
-    /**
-     * Returns next batch of RecipeDTOs for a token.
-     * Falls back to AI if cache is exhausted.
-     */
     @Transactional
     public List<RecipeDTO> getNextBatch(String token, int batchSize) throws Exception {
         if (token == null || batchSize <= 0)
@@ -110,19 +92,15 @@ public class RecipeMatcherService {
 
         List<RecipeDTO> resultBatch = new ArrayList<>();
 
-        // 1️⃣ Pull recipes already cached
-        // The getNextRecipes method internally handles presentedTitles and AI limits
         List<RecipeDTO> cacheBatch = recipeCacheService.getNextRecipes(token, batchSize);
         resultBatch.addAll(cacheBatch);
 
         int filled = resultBatch.size();
 
-        // 2️⃣ Determine remaining AI quota
         int aiGeneratedSoFar = recipeCacheService.getAiGeneratedCount(token);
-        int aiRemaining = Math.max(0, 5 - aiGeneratedSoFar); // Max 5 AI recipes per session
+        int aiRemaining = Math.max(0, 5 - aiGeneratedSoFar);
         int remainingSlots = batchSize - filled;
 
-        // 3️⃣ If batch not full and AI quota available, fetch AI recipes
         if (remainingSlots > 0 && aiRemaining > 0) {
             int toFetchFromAI = Math.min(remainingSlots, aiRemaining);
 
@@ -130,8 +108,6 @@ public class RecipeMatcherService {
             int maxPrep = recipeCacheService.getMaxPrepTime(token);
             List<PantryIngredient> pantry = recipeCacheService.getCachedIngredients(token);
 
-            // IMPORTANT: Get ALL titles already cached (including those not yet presented)
-            // to pass to AI for exclusion.
             Set<String> allExcludedTitles = recipeCacheService.getAllCachedTitles(token);
 
             List<Recipe> aiRecipes = fetchValidAIRecipes(pantry, minPrep, maxPrep, allExcludedTitles, toFetchFromAI);
@@ -150,47 +126,30 @@ public class RecipeMatcherService {
                     })
                     .collect(Collectors.toList());
 
-            // Add AI recipes to cache. The addMoreRecipes method will handle de-duplication
-            // against its internal allCachedTitles set.
             recipeCacheService.addMoreRecipes(token, dtoAI, true);
 
-            // Re-attempt to get recipes from cache after new ones are added
-            // This is crucial because `getNextRecipes` might have returned an empty list
-            // if `currentIndex` was at the end before `addMoreRecipes` was called.
-            // We now get up to `remainingSlots` new items, which will be the newly added AI
-            // recipes.
             List<RecipeDTO> freshAIFromCache = recipeCacheService.getNextRecipes(token, remainingSlots);
             resultBatch.addAll(freshAIFromCache);
             filled = resultBatch.size();
         }
 
-        // 4️⃣ Check if AI quota is exhausted and if no more recipes are available
-        // Note: The IllegalStateException should only be thrown if we genuinely ran out
-        // of recipes
-        // and hit the AI limit, preventing an infinite loop.
-        // It's better to return an empty list or a list smaller than batchSize if no
-        // more are available,
-        // rather than throwing an exception for every "no more recipes" scenario.
         if (resultBatch.isEmpty() && recipeCacheService.isExhausted(token)) {
-            // This indicates no more recipes can be provided for this token.
-            // The frontend should handle an empty list as "no more results."
             System.out.println("No more recipes available for token: " + token);
             return Collections.emptyList();
         }
 
-        // 5️⃣ Return at most batchSize recipes
         return (resultBatch.size() > batchSize) ? resultBatch.subList(0, batchSize) : resultBatch;
     }
 
     /**
      * Helper to repeatedly fetch AI recipes until enough valid ones are collected.
-     * Now accepts a Set of ALL titles to exclude, not just already presented.
+     * NOW INCLUDES INGREDIENT COUNT VALIDATION
      */
     private List<Recipe> fetchValidAIRecipes(
             List<PantryIngredient> pantryIngredients,
             int minPrepTime,
             int maxPrepTime,
-            Set<String> allExcludedTitles, // Renamed for clarity
+            Set<String> allExcludedTitles,
             int required) throws Exception {
 
         List<Map<String, Object>> ingredientsForAI = pantryIngredients.stream()
@@ -203,11 +162,16 @@ public class RecipeMatcherService {
                 })
                 .collect(Collectors.toList());
 
+        // Calculate max allowed ingredients (same logic as in RecipeAIService)
+        int providedIngredientCount = pantryIngredients.size();
+        int maxAllowedIngredients = (int) Math.floor(providedIngredientCount / 0.75);
+        
+        System.out.println("Ingredient validation: provided=" + providedIngredientCount + 
+                         ", max allowed=" + maxAllowedIngredients);
+
         List<Recipe> validRecipes = new ArrayList<>();
         int attempts = 0;
 
-        // Create a working set for titles already considered in this specific AI
-        // fetching loop
         Set<String> localExcludedTitles = new HashSet<>(allExcludedTitles);
 
         while (validRecipes.size() < required && attempts < MAX_AI_RETRIES) {
@@ -218,31 +182,48 @@ public class RecipeMatcherService {
                     ingredientsForAI,
                     minPrepTime,
                     maxPrepTime,
-                    localExcludedTitles, // Pass the growing set of excluded titles to AI
+                    localExcludedTitles,
                     stillNeeded);
 
-            // Filter out: null/empty titles AND ones already seen (locally or globally)
+            // Filter with ALL validations:
+            // 1. Non-null/empty title
+            // 2. Not already excluded
+            // 3. Ingredient count within limit
+            // 4. Has valid ingredients list
             List<Recipe> newUniqueRecipes = aiRecipes.stream()
                     .filter(r -> r.getTitle() != null && !r.getTitle().trim().isEmpty())
-                    .filter(r -> !localExcludedTitles.contains(r.getTitle().toLowerCase())) // Use localExcludedTitles
-                    .collect(Collectors.toList()); // Collect to a list for adding
+                    .filter(r -> !localExcludedTitles.contains(r.getTitle().toLowerCase()))
+                    .filter(r -> {
+                        if (r.getIngredients() == null || r.getIngredients().isEmpty()) {
+                            System.out.println("Rejecting recipe '" + r.getTitle() + "': no ingredients");
+                            return false;
+                        }
+                        
+                        int recipeIngredientCount = r.getIngredients().size();
+                        boolean valid = recipeIngredientCount <= maxAllowedIngredients;
+                        
+                        if (!valid) {
+                            System.out.println("Rejecting recipe '" + r.getTitle() + 
+                                             "': has " + recipeIngredientCount + 
+                                             " ingredients, max allowed is " + maxAllowedIngredients);
+                        }
+                        
+                        return valid;
+                    })
+                    .collect(Collectors.toList());
 
-            // Add to results and update local excluded titles for subsequent AI calls in
-            // this loop
             validRecipes.addAll(newUniqueRecipes);
             newUniqueRecipes.stream()
                     .map(Recipe::getTitle)
-        .filter(Objects::nonNull)                  // <- add this
-        .map(String::toLowerCase)
-        .forEach(localExcludedTitles::add);
+                    .filter(Objects::nonNull)
+                    .map(String::toLowerCase)
+                    .forEach(localExcludedTitles::add);
         }
 
+        System.out.println("AI fetch completed: " + validRecipes.size() + " valid recipes after " + attempts + " attempts");
         return validRecipes;
     }
 
-    /**
-     * Existing pantry-based matching logic (optional).
-     */
     public List<Recipe> matchRecipes(List<PantryIngredient> providedPantry) {
         List<PantryIngredient> pantryIngredients = (providedPantry != null && !providedPantry.isEmpty())
                 ? providedPantry
@@ -303,7 +284,7 @@ public class RecipeMatcherService {
         if (pantryMap.containsKey(reqName))
             return pantryMap.get(reqName);
 
-        // singular/plural fallback
+            
         if (reqName.endsWith("es") && pantryMap.containsKey(reqName.substring(0, reqName.length() - 2))) {
             return pantryMap.get(reqName.substring(0, reqName.length() - 2));
         }
@@ -311,7 +292,7 @@ public class RecipeMatcherService {
             return pantryMap.get(reqName.substring(0, reqName.length() - 1));
         }
 
-        // substring fuzzy match
+
         for (String pantryKey : pantryMap.keySet()) {
             if (pantryKey.contains(reqName) || reqName.contains(pantryKey)) {
                 return pantryMap.get(pantryKey);
